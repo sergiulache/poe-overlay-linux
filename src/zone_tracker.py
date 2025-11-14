@@ -120,6 +120,7 @@ class ZoneTracker:
         # 2. Next 2 acts (progression)
         # 3. Previous act (backtracking)
         # 4. Global search (fallback)
+        # Note: Try exact name first, then without "The " prefix if present
 
         zone_data = self._find_zone_in_act_range(zone_name, self.current_act, self.current_act)
 
@@ -138,6 +139,14 @@ class ZoneTracker:
         if not zone_data:
             # Fallback to global search
             zone_data = self.data_loader.find_zone_by_name(zone_name)
+
+        if not zone_data and zone_name.startswith("The "):
+            # Try without "The " prefix (PoE data is inconsistent)
+            # e.g., "The Submerged Passage" -> "Submerged Passage"
+            normalized_name = zone_name[4:]
+            zone_data = self.data_loader.find_zone_by_name(normalized_name)
+            if zone_data:
+                zone_name = normalized_name  # Use normalized name for tracking
 
         if not zone_data:
             print(f"Warning: Unknown zone '{zone_name}'")
