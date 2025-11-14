@@ -104,6 +104,39 @@ class ZoneTracker:
 
         return None
 
+    def _search_all_acts_by_proximity(self, zone_name: str) -> Optional[Dict]:
+        """
+        Search all acts for a zone, prioritizing acts closest to current_act.
+        Handles duplicate zone names (e.g., Solaris Temple in Acts 3 & 8).
+
+        Args:
+            zone_name: Zone name to find
+
+        Returns:
+            Zone data dict if found, None otherwise
+        """
+        total_acts = len(self.data_loader.areas)
+
+        # Search in order of distance from current act
+        # Distance 0 (current), 1 (±1), 2 (±2), etc.
+        for distance in range(total_acts):
+            # Try act above current
+            act_above = self.current_act + distance
+            if act_above <= total_acts:
+                result = self._find_zone_in_act_range(zone_name, act_above, act_above)
+                if result:
+                    return result
+
+            # Try act below current (skip distance 0 to avoid duplicate)
+            if distance > 0:
+                act_below = self.current_act - distance
+                if act_below >= 1:
+                    result = self._find_zone_in_act_range(zone_name, act_below, act_below)
+                    if result:
+                        return result
+
+        return None
+
     def enter_zone(self, zone_name: str) -> Optional[ZoneEntry]:
         """
         Process entering a new zone
@@ -137,14 +170,15 @@ class ZoneTracker:
             zone_data = self._find_zone_in_act_range(zone_name, self.current_act - 1, self.current_act - 1)
 
         if not zone_data:
-            # Fallback to global search
-            zone_data = self.data_loader.find_zone_by_name(zone_name)
+            # Fallback: search all acts, prioritizing closest to current act
+            # This handles duplicate zone names (e.g., Solaris Temple in Act 3 & 8)
+            zone_data = self._search_all_acts_by_proximity(zone_name)
 
         if not zone_data and zone_name.startswith("The "):
             # Try without "The " prefix (PoE data is inconsistent)
             # e.g., "The Submerged Passage" -> "Submerged Passage"
             normalized_name = zone_name[4:]
-            zone_data = self.data_loader.find_zone_by_name(normalized_name)
+            zone_data = self._search_all_acts_by_proximity(normalized_name)
             if zone_data:
                 zone_name = normalized_name  # Use normalized name for tracking
 
