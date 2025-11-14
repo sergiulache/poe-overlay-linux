@@ -80,6 +80,8 @@ class ClientLogMonitor:
         """
         Start monitoring the log file
 
+        This is a blocking call - run in a background thread.
+
         Args:
             poll_interval: How often to check for new lines (seconds)
         """
@@ -111,7 +113,7 @@ class ClientLogMonitor:
         self._running = False
 
 
-def test():
+def main():
     """Test the monitor with a sample Client.txt"""
     print("=== Client.txt Monitor Test ===\n")
 
@@ -133,4 +135,4 @@ def test():
 
 
 if __name__ == "__main__":
-    test()
+    main()

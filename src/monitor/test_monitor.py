@@ -82,8 +82,13 @@ def main():
 
         # Show results
         print(f"\n=== Test Complete ===")
-        print(f"Zones detected: {len(zones_detected)}")
+        expected = 7
+        print(f"Zones detected: {len(zones_detected)}/{expected}")
         print(f"Zones: {', '.join(zones_detected)}")
+
+        # Assert for automated testing
+        assert len(zones_detected) == expected, f"Expected {expected} zones, got {len(zones_detected)}"
+        print("\n✓ Test passed!")
 
     except KeyboardInterrupt:
         print("\n\nTest interrupted")
