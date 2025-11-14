@@ -91,6 +91,8 @@ class ClientLogMonitor:
         steam_roots = [
             Path.home() / ".steam" / "steam",
             Path.home() / ".local" / "share" / "Steam",
+            # Flatpak Steam
+            Path.home() / ".var" / "app" / "com.valvesoftware.Steam" / "data" / "Steam",
         ]
 
         for steam_root in steam_roots:
@@ -132,13 +134,22 @@ class ClientLogMonitor:
 
     def _parse_line(self, line: str):
         """Parse a log line and trigger callbacks"""
+        # Debug: show what we're parsing
+        if line.strip():  # Only show non-empty lines
+            print(f"[DEBUG] Parsing: {line[:100]}")  # Show first 100 chars
+
         # Check for zone change
         match = self.ZONE_PATTERN.search(line)
         if match:
             zone_name = match.group(1)
-            print(f"Zone detected: {zone_name}")
+            print(f"✓ Zone detected: {zone_name}")
             for callback in self.callbacks['zone_change']:
                 callback(zone_name)
+        elif "Generating level" in line or "area" in line.lower():
+            # If line has zone-related keywords but didn't match, show why
+            print(f"[DEBUG] Line looks like zone but didn't match pattern:")
+            print(f"        Expected: ': Generating level <num> area \"<name>\"'")
+            print(f"        Got: {line[:150]}")
 
     def start(self, poll_interval: float = 0.5):
         """
