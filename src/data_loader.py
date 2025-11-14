@@ -32,6 +32,7 @@ class GameDataLoader:
         self._guide: Optional[List[List[Any]]] = None
         self._gems: Optional[Dict[str, Any]] = None
         self._zone_name_map: Optional[Dict[str, Dict[str, str]]] = None
+        self._zone_id_map: Optional[Dict[str, Dict[str, str]]] = None
 
     def _load_json(self, filename: str) -> Any:
         """Load a JSON file from data directory"""
@@ -110,6 +111,25 @@ class GameDataLoader:
             raise ValueError(f"Invalid act number: {act} (must be 1-{len(self.guide)})")
 
         return self.guide[act - 1]
+
+    def find_zone_by_id(self, zone_id: str) -> Optional[Dict[str, str]]:
+        """
+        Find a zone by its unique ID
+
+        Args:
+            zone_id: Zone ID (e.g., "1_1_5", "1_3_8_1")
+
+        Returns:
+            Zone object if found, None otherwise
+        """
+        # Build lookup cache on first use
+        if self._zone_id_map is None:
+            self._zone_id_map = {}
+            for act_zones in self.areas:
+                for zone in act_zones:
+                    self._zone_id_map[zone['id']] = zone
+
+        return self._zone_id_map.get(zone_id)
 
     def find_zone_by_name(self, zone_name: str) -> Optional[Dict[str, str]]:
         """

@@ -19,8 +19,12 @@ class ClientLogMonitor:
     POE_APP_ID = "238960"
 
     # Regex patterns for log parsing
-    # Pattern matches: ": You have entered <zone_name>."
-    ZONE_PATTERN = re.compile(r': You have entered (.+)\.$')
+    # Primary: Parse zone IDs from "Generating level" lines (more reliable)
+    # Format: Generating level X area "1_1_5" with seed...
+    ZONE_ID_PATTERN = re.compile(r'Generating level \d+ area "([^"]+)"')
+
+    # Fallback: Parse human-readable names (less reliable, kept for edge cases)
+    ZONE_NAME_PATTERN = re.compile(r': You have entered (.+)\.$')
 
     def __init__(self, client_txt_path: Optional[str] = None):
         """
@@ -139,17 +143,28 @@ class ClientLogMonitor:
         if line.strip():  # Only show non-empty lines
             print(f"[DEBUG] Parsing: {line[:100]}")  # Show first 100 chars
 
-        # Check for zone change
-        match = self.ZONE_PATTERN.search(line)
+        # Primary: Try to parse zone ID from "Generating level" line
+        match = self.ZONE_ID_PATTERN.search(line)
+        if match:
+            zone_id = match.group(1)
+            print(f"✓ Zone ID detected: {zone_id}")
+            for callback in self.callbacks['zone_change']:
+                callback(zone_id)
+            return
+
+        # Fallback: Try human-readable name (less reliable)
+        match = self.ZONE_NAME_PATTERN.search(line)
         if match:
             zone_name = match.group(1)
-            print(f"✓ Zone detected: {zone_name}")
+            print(f"⚠ Zone name detected (fallback): {zone_name}")
             for callback in self.callbacks['zone_change']:
                 callback(zone_name)
-        elif "You have entered" in line or "Generating level" in line:
-            # If line has zone-related keywords but didn't match, show why
+            return
+
+        # Debug: Show lines that look like zones but didn't match
+        if "Generating level" in line or "You have entered" in line:
             print(f"[DEBUG] Line looks like zone but didn't match pattern:")
-            print(f"        Expected: ': You have entered <zone_name>.'")
+            print(f"        Expected: 'Generating level X area \"ID\"' or ': You have entered <name>.'")
             print(f"        Got: {line[:150]}")
 
     def start(self, poll_interval: float = 0.5):
