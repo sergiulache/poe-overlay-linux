@@ -5,10 +5,15 @@ Test script for Client.txt monitor
 Creates a mock Client.txt and writes test zone changes
 """
 
+import sys
+from pathlib import Path
+
+# Add src directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
 import time
 import threading
-from pathlib import Path
-from client_log import ClientLogMonitor
+from monitor.client_log import ClientLogMonitor
 
 
 def create_test_log():

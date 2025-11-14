@@ -5,6 +5,12 @@ Comprehensive test suite for ZoneTracker
 Tests zone tracking, act detection, passive points, and edge cases.
 """
 
+import sys
+from pathlib import Path
+
+# Add src directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
 from zone_tracker import ZoneTracker, ZoneEntry
 from data_loader import GameDataLoader
 
