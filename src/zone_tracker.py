@@ -243,14 +243,9 @@ class ZoneTracker:
         if len(parts) >= 2:
             try:
                 zone_act = int(parts[1])
-
-                # Act progression: can only go forward or stay same
-                # (except for hideout/special zones which we ignore for now)
-                if zone_act >= self.current_act:
-                    return zone_act
-                else:
-                    # Revisiting old zone - keep current act
-                    return self.current_act
+                # Return the actual act from zone ID
+                # Players can move backwards via waypoints
+                return zone_act
             except ValueError:
                 pass
 
