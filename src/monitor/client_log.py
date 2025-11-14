@@ -47,13 +47,34 @@ class ClientLogMonitor:
 
     def _find_client_txt(self) -> Optional[str]:
         """Auto-detect Client.txt location"""
+        print("Searching for Client.txt...")
+
+        # Check environment variable first
+        env_path = os.environ.get('POE_CLIENT_TXT')
+        if env_path:
+            path = Path(env_path).expanduser()
+            print(f"  Checking env var POE_CLIENT_TXT: {path}")
+            if path.exists():
+                print(f"  ✓ Found via environment variable")
+                return str(path)
+            else:
+                print(f"  ✗ Path from environment variable doesn't exist")
+
         # Try common Steam paths
         for path_template in self.STEAM_PATHS:
             path = Path(path_template).expanduser()
+            print(f"  Checking: {path}")
             if path.exists():
+                print(f"  ✓ Found!")
                 return str(path)
+            else:
+                print(f"  ✗ Not found")
 
-        # TODO: Add Lutris/custom Wine prefix detection
+        print("\n  ⚠ Client.txt not found in any known location")
+        print("  Set POE_CLIENT_TXT environment variable to specify custom path:")
+        print("    export POE_CLIENT_TXT='/path/to/Client.txt'")
+        print("    ./run.sh")
+
         return None
 
     def _get_file_size(self) -> int:
