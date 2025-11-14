@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-PoE Overlay Test - Minimal Wayland overlay proof of concept
-Tests corner overlay + fullscreen click-through overlay
+PoE Overlay - Wayland overlay for Path of Exile leveling tracking
+
+Shows live zone, act, and passive point data from Client.txt monitoring.
 """
 
 import gi
@@ -9,6 +10,7 @@ gi.require_version('Gtk', '4.0')
 gi.require_version('Gtk4LayerShell', '1.0')
 from gi.repository import Gtk, Gdk, GLib, Gtk4LayerShell as LayerShell
 import cairo
+from game_state import GameState
 
 
 class CornerOverlay(Gtk.Window):
@@ -17,9 +19,10 @@ class CornerOverlay(Gtk.Window):
     # Class-level CSS provider
     _css_loaded = False
 
-    def __init__(self, app):
+    def __init__(self, app, game_state):
         super().__init__(application=app)
         self.fullscreen_overlay = None
+        self.game_state = game_state
 
         # Load CSS once for all instances
         if not CornerOverlay._css_loaded:
@@ -96,18 +99,15 @@ class CornerOverlay(Gtk.Window):
         title.add_css_class("title-3")
         box.append(title)
 
-        # Mock data
-        self.zone_label = Gtk.Label(label="Zone: The Coast")
+        # Game data (will update from callbacks)
+        self.zone_label = Gtk.Label(label="Zone: Starting...")
         box.append(self.zone_label)
 
         self.act_label = Gtk.Label(label="Act: 1")
         box.append(self.act_label)
 
-        self.points_label = Gtk.Label(label="Passive Points: 0/2")
+        self.points_label = Gtk.Label(label="Passive Points: 0")
         box.append(self.points_label)
-
-        self.timer_label = Gtk.Label(label="Timer: 00:00:00")
-        box.append(self.timer_label)
 
         # Separator
         separator = Gtk.Separator()
@@ -131,6 +131,41 @@ class CornerOverlay(Gtk.Window):
         box.append(button_box)
 
         self.set_child(box)
+
+        # Wire up game state callbacks
+        self.setup_callbacks()
+
+    def setup_callbacks(self):
+        """Wire GameState callbacks to update UI"""
+        def on_zone_change(entry):
+            # Update UI from background thread safely
+            GLib.idle_add(self.update_zone, entry.zone_name, entry.act)
+
+        def on_act_change(old_act, new_act):
+            GLib.idle_add(self.update_act, new_act)
+
+        def on_passive_point(zone_name, total):
+            GLib.idle_add(self.update_passive_points, total)
+
+        self.game_state.on_zone_change = on_zone_change
+        self.game_state.on_act_change = on_act_change
+        self.game_state.on_passive_point = on_passive_point
+
+    def update_zone(self, zone_name, act):
+        """Update zone label (called from GTK main thread)"""
+        self.zone_label.set_label(f"Zone: {zone_name}")
+        self.act_label.set_label(f"Act: {act}")
+        return False
+
+    def update_act(self, act):
+        """Update act label (called from GTK main thread)"""
+        self.act_label.set_label(f"Act: {act}")
+        return False
+
+    def update_passive_points(self, total):
+        """Update passive points label (called from GTK main thread)"""
+        self.points_label.set_label(f"Passive Points: {total}")
+        return False
 
     def on_passive_tree_clicked(self, button):
         """Toggle fullscreen passive tree overlay"""
@@ -301,12 +336,28 @@ class OverlayApp(Gtk.Application):
 
     def __init__(self):
         super().__init__(application_id="com.poe.overlay.test")
+        self.game_state = None
 
     def do_activate(self):
         """Application activation"""
         if not self.get_windows():
-            corner = CornerOverlay(self)
+            # Initialize game state
+            print("Initializing game state...")
+            self.game_state = GameState()
+            self.game_state.start()
+
+            # Create and show overlay
+            corner = CornerOverlay(self, self.game_state)
             corner.present()
+
+            print("Overlay started and monitoring Client.txt")
+
+    def do_shutdown(self):
+        """Application shutdown"""
+        if self.game_state:
+            print("Stopping game state monitoring...")
+            self.game_state.stop()
+        super().do_shutdown()
 
 
 def main():
