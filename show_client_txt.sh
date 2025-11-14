@@ -20,8 +20,8 @@ if monitor.client_txt_path:
             print(line.rstrip())
 
     print(f"\n=== Looking for pattern ===")
-    print('Pattern: : Generating level <num> area "<zone_name>"')
-    print('\nExample match: 2024/11/14 10:00:00 123 [INFO] : Generating level 1 area "Twilight Strand"')
+    print('Pattern: : You have entered <zone_name>.')
+    print('\nExample match: 2025/11/14 21:22:11 44933602 cff945bb [INFO Client 312] : You have entered The Submerged Passage.')
 else:
     print("\nClient.txt not found!")
 EOF

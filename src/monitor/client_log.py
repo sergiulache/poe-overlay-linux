@@ -19,7 +19,8 @@ class ClientLogMonitor:
     POE_APP_ID = "238960"
 
     # Regex patterns for log parsing
-    ZONE_PATTERN = re.compile(r': Generating level \d+ area "([^"]+)"')
+    # Pattern matches: ": You have entered <zone_name>."
+    ZONE_PATTERN = re.compile(r': You have entered (.+)\.$')
 
     def __init__(self, client_txt_path: Optional[str] = None):
         """
@@ -145,10 +146,10 @@ class ClientLogMonitor:
             print(f"✓ Zone detected: {zone_name}")
             for callback in self.callbacks['zone_change']:
                 callback(zone_name)
-        elif "Generating level" in line or "area" in line.lower():
+        elif "You have entered" in line or "Generating level" in line:
             # If line has zone-related keywords but didn't match, show why
             print(f"[DEBUG] Line looks like zone but didn't match pattern:")
-            print(f"        Expected: ': Generating level <num> area \"<name>\"'")
+            print(f"        Expected: ': You have entered <zone_name>.'")
             print(f"        Got: {line[:150]}")
 
     def start(self, poll_interval: float = 0.5):

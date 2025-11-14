@@ -42,7 +42,8 @@ def simulate_zone_changes(log_path: str):
     for i, zone in enumerate(zones):
         time.sleep(1)  # 1 second between zones
         level = 1 + i
-        line = f'2024/11/14 10:{10+i:02d}:00 12345678{i} [INFO] : Generating level {level} area "{zone}"\n'
+        # Use actual PoE log format: ": You have entered <zone>."
+        line = f'2025/11/14 10:{10+i:02d}:00 12345678{i} cff945bb [INFO Client 312] : You have entered {zone}.\n'
 
         with open(log_path, 'a') as f:
             f.write(line)
