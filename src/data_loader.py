@@ -31,6 +31,7 @@ class GameDataLoader:
         self._areas: Optional[List[List[Dict[str, str]]]] = None
         self._guide: Optional[List[List[Any]]] = None
         self._gems: Optional[Dict[str, Any]] = None
+        self._zone_name_map: Optional[Dict[str, Dict[str, str]]] = None
 
     def _load_json(self, filename: str) -> Any:
         """Load a JSON file from data directory"""
@@ -120,15 +121,17 @@ class GameDataLoader:
         Returns:
             Zone object if found, None otherwise
         """
-        for act_zones in self.areas:
-            for zone in act_zones:
-                if zone['name'] == zone_name:
-                    return zone
-                # Also check map_name if it exists
-                if 'map_name' in zone and zone['map_name'] == zone_name:
-                    return zone
+        # Build lookup cache on first use
+        if self._zone_name_map is None:
+            self._zone_name_map = {}
+            for act_zones in self.areas:
+                for zone in act_zones:
+                    self._zone_name_map[zone['name']] = zone
+                    # Also index by map_name if it exists
+                    if 'map_name' in zone:
+                        self._zone_name_map[zone['map_name']] = zone
 
-        return None
+        return self._zone_name_map.get(zone_name)
 
 
 def main():

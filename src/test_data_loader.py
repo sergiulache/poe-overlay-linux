@@ -65,15 +65,13 @@ def main():
     test_zones = [
         "Lioneye's Watch",
         "The Coast",
-        "The Mud Flats",
+        "Mud Flats",  # No "The" prefix in actual data
         "Highgate"  # Act 4/9 town
     ]
     for zone_name in test_zones:
         zone = loader.find_zone_by_name(zone_name)
-        if zone:
-            print(f"  ✓ Found '{zone_name}': {zone['id']}")
-        else:
-            print(f"  ⚠ Zone not found: '{zone_name}' (might be expected)")
+        assert zone is not None, f"Zone '{zone_name}' should have been found"
+        print(f"  ✓ Found '{zone_name}': {zone['id']}")
 
     # Test 8: Invalid act number handling
     print("\nTest 8: Testing error handling...")
