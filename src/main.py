@@ -139,26 +139,18 @@ class CornerOverlay(Gtk.Window):
         """Wire GameState callbacks to update UI"""
         def on_zone_change(entry):
             # Update UI from background thread safely
+            # Note: Act is already updated here, no need for separate on_act_change
             GLib.idle_add(self.update_zone, entry.zone_name, entry.act)
-
-        def on_act_change(old_act, new_act):
-            GLib.idle_add(self.update_act, new_act)
 
         def on_passive_point(zone_name, total):
             GLib.idle_add(self.update_passive_points, total)
 
         self.game_state.on_zone_change = on_zone_change
-        self.game_state.on_act_change = on_act_change
         self.game_state.on_passive_point = on_passive_point
 
     def update_zone(self, zone_name, act):
         """Update zone label (called from GTK main thread)"""
         self.zone_label.set_label(f"Zone: {zone_name}")
-        self.act_label.set_label(f"Act: {act}")
-        return False
-
-    def update_act(self, act):
-        """Update act label (called from GTK main thread)"""
         self.act_label.set_label(f"Act: {act}")
         return False
 
