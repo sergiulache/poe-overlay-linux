@@ -15,11 +15,8 @@ from typing import Optional, Callable, List
 class ClientLogMonitor:
     """Monitors PoE Client.txt for game events"""
 
-    # Common Steam library locations
-    STEAM_PATHS = [
-        "~/.steam/steam/steamapps/compatdata/238960/pfx/drive_c/Program Files (x86)/Grinding Gear Games/Path of Exile/logs/Client.txt",
-        "~/.local/share/Steam/steamapps/compatdata/238960/pfx/drive_c/Program Files (x86)/Grinding Gear Games/Path of Exile/logs/Client.txt",
-    ]
+    # Steam PoE app ID
+    POE_APP_ID = "238960"
 
     # Regex patterns for log parsing
     ZONE_PATTERN = re.compile(r': Generating level \d+ area "([^"]+)"')
@@ -60,22 +57,68 @@ class ClientLogMonitor:
             else:
                 print(f"  ✗ Path from environment variable doesn't exist")
 
-        # Try common Steam paths
-        for path_template in self.STEAM_PATHS:
-            path = Path(path_template).expanduser()
-            print(f"  Checking: {path}")
-            if path.exists():
-                print(f"  ✓ Found!")
-                return str(path)
-            else:
-                print(f"  ✗ Not found")
+        # Find Steam library folders from Steam config
+        steam_libraries = self._find_steam_libraries()
 
-        print("\n  ⚠ Client.txt not found in any known location")
+        # Check each Steam library for PoE
+        for library_path in steam_libraries:
+            # Check common game install location
+            poe_path = library_path / "steamapps" / "common" / "Path of Exile" / "logs" / "Client.txt"
+            print(f"  Checking: {poe_path}")
+            if poe_path.exists():
+                print(f"  ✓ Found!")
+                return str(poe_path)
+
+            # Check Proton prefix location (for Windows build)
+            prefix_path = library_path / "steamapps" / "compatdata" / self.POE_APP_ID / "pfx" / "drive_c" / "Program Files (x86)" / "Grinding Gear Games" / "Path of Exile" / "logs" / "Client.txt"
+            print(f"  Checking: {prefix_path}")
+            if prefix_path.exists():
+                print(f"  ✓ Found!")
+                return str(prefix_path)
+
+        print("\n  ⚠ Client.txt not found in any Steam library")
         print("  Set POE_CLIENT_TXT environment variable to specify custom path:")
         print("    export POE_CLIENT_TXT='/path/to/Client.txt'")
         print("    ./run.sh")
 
         return None
+
+    def _find_steam_libraries(self) -> List[Path]:
+        """Find all Steam library folders by reading Steam config"""
+        libraries = []
+
+        # Standard Steam installation paths
+        steam_roots = [
+            Path.home() / ".steam" / "steam",
+            Path.home() / ".local" / "share" / "Steam",
+        ]
+
+        for steam_root in steam_roots:
+            if not steam_root.exists():
+                continue
+
+            # Always include the main Steam folder
+            libraries.append(steam_root)
+
+            # Read libraryfolders.vdf to find additional Steam libraries
+            vdf_path = steam_root / "steamapps" / "libraryfolders.vdf"
+            if vdf_path.exists():
+                print(f"  Reading Steam library config: {vdf_path}")
+                try:
+                    with open(vdf_path, 'r') as f:
+                        content = f.read()
+                        # Parse simple VDF format - look for "path" entries
+                        import re
+                        paths = re.findall(r'"path"\s+"([^"]+)"', content)
+                        for path_str in paths:
+                            lib_path = Path(path_str)
+                            if lib_path.exists() and lib_path not in libraries:
+                                libraries.append(lib_path)
+                                print(f"    Found Steam library: {lib_path}")
+                except Exception as e:
+                    print(f"    Warning: Could not parse Steam config: {e}")
+
+        return libraries
 
     def _get_file_size(self) -> int:
         """Get current file size"""
