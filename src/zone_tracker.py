@@ -58,6 +58,7 @@ class ZoneTracker:
         self.current_act: int = 1
         self.passive_points: int = 0
         self.visited_zones: set = set()
+        self.completed_passive_zones: set = set()
 
         # Callbacks
         self.callbacks = {
@@ -145,7 +146,7 @@ class ZoneTracker:
         zone_id = zone_data['id']
 
         # Determine act from zone (use current act progression logic)
-        zone_act = self._determine_act(zone_id, zone_name)
+        zone_act = self._determine_act(zone_id)
 
         # Create zone entry
         entry = ZoneEntry(
@@ -155,10 +156,10 @@ class ZoneTracker:
             timestamp=datetime.now()
         )
 
-        # Check for passive point BEFORE adding to history
-        # (to avoid double-counting if we visit the zone again)
-        if self._is_passive_zone(zone_id) and zone_id not in self._completed_passives():
+        # Check for passive point (using O(1) set lookup)
+        if self._is_passive_zone(zone_id) and zone_id not in self.completed_passive_zones:
             self.passive_points += 1
+            self.completed_passive_zones.add(zone_id)
             # Fire callback after updating points
             for callback in self.callbacks['passive_point']:
                 callback(zone_name, self.passive_points)
@@ -181,7 +182,7 @@ class ZoneTracker:
 
         return entry
 
-    def _determine_act(self, zone_id: str, zone_name: str) -> int:
+    def _determine_act(self, zone_id: str) -> int:
         """
         Determine which act a zone belongs to based on ID and current progression
 
@@ -190,7 +191,6 @@ class ZoneTracker:
 
         Args:
             zone_id: Zone ID from areas.json
-            zone_name: Zone name
 
         Returns:
             Act number (1-10)
@@ -221,14 +221,6 @@ class ZoneTracker:
                 return True
         return False
 
-    def _completed_passives(self) -> set:
-        """Get set of passive point zones already visited"""
-        completed = set()
-        for entry in self.zone_history:
-            if self._is_passive_zone(entry.zone_id):
-                completed.add(entry.zone_id)
-        return completed
-
     def get_act_zones_visited(self, act: int) -> List[ZoneEntry]:
         """Get all zones visited in a specific act"""
         return [entry for entry in self.zone_history if entry.act == act]
@@ -244,6 +236,7 @@ class ZoneTracker:
         self.current_act = 1
         self.passive_points = 0
         self.visited_zones.clear()
+        self.completed_passive_zones.clear()
 
 
 def main():
