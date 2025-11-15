@@ -5,6 +5,7 @@ Zone tracking and game state management for Path of Exile
 Tracks zone changes, determines current act, and calculates progression.
 """
 
+import re
 from typing import Optional, Dict, List, Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -104,27 +105,64 @@ class ZoneTracker:
 
         return None
 
-    def enter_zone(self, zone_name: str) -> Optional[ZoneEntry]:
+    def _search_all_acts_by_proximity(self, zone_name: str) -> Optional[Dict]:
         """
-        Process entering a new zone
+        Search all acts for a zone, prioritizing acts closest to current_act.
+        Handles duplicate zone names (e.g., Solaris Temple in Acts 3 & 8).
 
         Args:
-            zone_name: Name of zone being entered
+            zone_name: Zone name to find
 
         Returns:
-            ZoneEntry if zone was found and tracked, None otherwise
+            Zone data dict if found, None otherwise
         """
-        # Find zone in data, prioritizing current/nearby acts
-        # Search strategy:
-        # 1. Current act
-        # 2. Next 2 acts (progression)
-        # 3. Previous act (backtracking)
-        # 4. Global search (fallback)
+        total_acts = len(self.data_loader.areas)
 
+        # Search in order of distance from current act
+        # Distance 0 (current), 1 (±1), 2 (±2), etc.
+        for distance in range(total_acts):
+            # Try act above current
+            act_above = self.current_act + distance
+            if act_above <= total_acts:
+                result = self._find_zone_in_act_range(zone_name, act_above, act_above)
+                if result:
+                    return result
+
+            # Try act below current (skip distance 0 to avoid duplicate)
+            if distance > 0:
+                act_below = self.current_act - distance
+                if act_below >= 1:
+                    result = self._find_zone_in_act_range(zone_name, act_below, act_below)
+                    if result:
+                        return result
+
+        return None
+
+    def _looks_like_zone_id(self, identifier: str) -> bool:
+        """
+        Check if identifier looks like a zone ID (e.g., "1_1_5", "1_3_8_1", "1_1_town")
+        vs a zone name (e.g., "The Ledge", "Solaris Temple Level 1")
+        """
+        # Zone IDs are alphanumeric and underscores (e.g., "1_1_5", "1_1_town", "2_11_endgame_town")
+        # Zone names have spaces, punctuation, capitals mid-word
+        return bool(re.match(r'^[\da-z_]+$', identifier))
+
+    def _fallback_lookup_by_name(self, zone_name: str) -> Optional[tuple]:
+        """
+        FALLBACK ONLY: Look up zone by human-readable name.
+        Less reliable due to "The " prefix inconsistencies and localization.
+        Only used when zone ID parsing fails.
+
+        Args:
+            zone_name: Human-readable zone name
+
+        Returns:
+            Tuple of (zone_data, normalized_name) if found, None otherwise
+        """
+        # Try to find zone by name, prioritizing acts near current_act
         zone_data = self._find_zone_in_act_range(zone_name, self.current_act, self.current_act)
 
         if not zone_data:
-            # Try next acts (progression)
             zone_data = self._find_zone_in_act_range(
                 zone_name,
                 self.current_act + 1,
@@ -132,18 +170,52 @@ class ZoneTracker:
             )
 
         if not zone_data and self.current_act > 1:
-            # Try previous act (backtracking)
             zone_data = self._find_zone_in_act_range(zone_name, self.current_act - 1, self.current_act - 1)
 
         if not zone_data:
-            # Fallback to global search
-            zone_data = self.data_loader.find_zone_by_name(zone_name)
+            zone_data = self._search_all_acts_by_proximity(zone_name)
+
+        # Handle "The " prefix inconsistency (PoE data is inconsistent)
+        if not zone_data and zone_name.startswith("The "):
+            normalized_name = zone_name[4:]
+            zone_data = self._search_all_acts_by_proximity(normalized_name)
+            if zone_data:
+                zone_name = normalized_name
 
         if not zone_data:
-            print(f"Warning: Unknown zone '{zone_name}'")
+            print(f"Warning: Unknown zone name '{zone_name}' (fallback lookup)")
             return None
 
-        zone_id = zone_data['id']
+        return (zone_data, zone_name)
+
+    def enter_zone(self, zone_identifier: str) -> Optional[ZoneEntry]:
+        """
+        Process entering a new zone
+
+        Args:
+            zone_identifier: Zone ID (e.g., "1_1_5") or zone name (fallback)
+
+        Returns:
+            ZoneEntry if zone was found and tracked, None otherwise
+        """
+        # Primary: Try to look up by zone ID (robust, unique)
+        # Zone IDs have format: {difficulty}_{act}_{zone}_{level}
+        # e.g., "1_1_5", "1_3_8_1", "2_8_12_2"
+        if self._looks_like_zone_id(zone_identifier):
+            zone_data = self.data_loader.find_zone_by_id(zone_identifier)
+            if zone_data:
+                zone_id = zone_data['id']
+                zone_name = zone_data['name']
+            else:
+                print(f"Warning: Unknown zone ID '{zone_identifier}'")
+                return None
+        else:
+            # Fallback: Try to look up by name (less reliable, kept for edge cases)
+            result = self._fallback_lookup_by_name(zone_identifier)
+            if not result:
+                return None
+            zone_data, zone_name = result
+            zone_id = zone_data['id']
 
         # Determine act from zone (use current act progression logic)
         zone_act = self._determine_act(zone_id)
@@ -200,14 +272,9 @@ class ZoneTracker:
         if len(parts) >= 2:
             try:
                 zone_act = int(parts[1])
-
-                # Act progression: can only go forward or stay same
-                # (except for hideout/special zones which we ignore for now)
-                if zone_act >= self.current_act:
-                    return zone_act
-                else:
-                    # Revisiting old zone - keep current act
-                    return self.current_act
+                # Return the actual act from zone ID
+                # Players can move backwards via waypoints
+                return zone_act
             except ValueError:
                 pass
 

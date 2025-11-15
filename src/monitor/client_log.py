@@ -15,14 +15,16 @@ from typing import Optional, Callable, List
 class ClientLogMonitor:
     """Monitors PoE Client.txt for game events"""
 
-    # Common Steam library locations
-    STEAM_PATHS = [
-        "~/.steam/steam/steamapps/compatdata/238960/pfx/drive_c/Program Files (x86)/Grinding Gear Games/Path of Exile/logs/Client.txt",
-        "~/.local/share/Steam/steamapps/compatdata/238960/pfx/drive_c/Program Files (x86)/Grinding Gear Games/Path of Exile/logs/Client.txt",
-    ]
+    # Steam PoE app ID
+    POE_APP_ID = "238960"
 
     # Regex patterns for log parsing
-    ZONE_PATTERN = re.compile(r': Generating level \d+ area "([^"]+)"')
+    # Primary: Parse zone IDs from "Generating level" lines (more reliable)
+    # Format: Generating level X area "1_1_5" with seed...
+    ZONE_ID_PATTERN = re.compile(r'Generating level \d+ area "([^"]+)"')
+
+    # Fallback: Parse human-readable names (less reliable, kept for edge cases)
+    ZONE_NAME_PATTERN = re.compile(r': You have entered (.+)\.$')
 
     def __init__(self, client_txt_path: Optional[str] = None):
         """
@@ -47,14 +49,83 @@ class ClientLogMonitor:
 
     def _find_client_txt(self) -> Optional[str]:
         """Auto-detect Client.txt location"""
-        # Try common Steam paths
-        for path_template in self.STEAM_PATHS:
-            path = Path(path_template).expanduser()
-            if path.exists():
-                return str(path)
+        print("Searching for Client.txt...")
 
-        # TODO: Add Lutris/custom Wine prefix detection
+        # Check environment variable first
+        env_path = os.environ.get('POE_CLIENT_TXT')
+        if env_path:
+            path = Path(env_path).expanduser()
+            print(f"  Checking env var POE_CLIENT_TXT: {path}")
+            if path.exists():
+                print(f"  ✓ Found via environment variable")
+                return str(path)
+            else:
+                print(f"  ✗ Path from environment variable doesn't exist")
+
+        # Find Steam library folders from Steam config
+        steam_libraries = self._find_steam_libraries()
+
+        # Check each Steam library for PoE
+        for library_path in steam_libraries:
+            # Check common game install location
+            poe_path = library_path / "steamapps" / "common" / "Path of Exile" / "logs" / "Client.txt"
+            print(f"  Checking: {poe_path}")
+            if poe_path.exists():
+                print(f"  ✓ Found!")
+                return str(poe_path)
+
+            # Check Proton prefix location (for Windows build)
+            prefix_path = library_path / "steamapps" / "compatdata" / self.POE_APP_ID / "pfx" / "drive_c" / "Program Files (x86)" / "Grinding Gear Games" / "Path of Exile" / "logs" / "Client.txt"
+            print(f"  Checking: {prefix_path}")
+            if prefix_path.exists():
+                print(f"  ✓ Found!")
+                return str(prefix_path)
+
+        print("\n  ⚠ Client.txt not found in any Steam library")
+        print("  Set POE_CLIENT_TXT environment variable to specify custom path:")
+        print("    export POE_CLIENT_TXT='/path/to/Client.txt'")
+        print("    ./run.sh")
+
         return None
+
+    def _find_steam_libraries(self) -> List[Path]:
+        """Find all Steam library folders by reading Steam config"""
+        libraries = []
+
+        # Standard Steam installation paths
+        steam_roots = [
+            Path.home() / ".steam" / "steam",
+            Path.home() / ".local" / "share" / "Steam",
+            # Flatpak Steam
+            Path.home() / ".var" / "app" / "com.valvesoftware.Steam" / "data" / "Steam",
+        ]
+
+        for steam_root in steam_roots:
+            if not steam_root.exists():
+                continue
+
+            # Always include the main Steam folder
+            libraries.append(steam_root)
+
+            # Read libraryfolders.vdf to find additional Steam libraries
+            vdf_path = steam_root / "steamapps" / "libraryfolders.vdf"
+            if vdf_path.exists():
+                print(f"  Reading Steam library config: {vdf_path}")
+                try:
+                    with open(vdf_path, 'r') as f:
+                        content = f.read()
+                        # Parse simple VDF format - look for "path" entries
+                        import re
+                        paths = re.findall(r'"path"\s+"([^"]+)"', content)
+                        for path_str in paths:
+                            lib_path = Path(path_str)
+                            if lib_path.exists() and lib_path not in libraries:
+                                libraries.append(lib_path)
+                                print(f"    Found Steam library: {lib_path}")
+                except Exception as e:
+                    print(f"    Warning: Could not parse Steam config: {e}")
+
+        return libraries
 
     def _get_file_size(self) -> int:
         """Get current file size"""
@@ -68,13 +139,33 @@ class ClientLogMonitor:
 
     def _parse_line(self, line: str):
         """Parse a log line and trigger callbacks"""
-        # Check for zone change
-        match = self.ZONE_PATTERN.search(line)
+        # Debug: show what we're parsing
+        if line.strip():  # Only show non-empty lines
+            print(f"[DEBUG] Parsing: {line[:100]}")  # Show first 100 chars
+
+        # Primary: Try to parse zone ID from "Generating level" line
+        match = self.ZONE_ID_PATTERN.search(line)
+        if match:
+            zone_id = match.group(1)
+            print(f"✓ Zone ID detected: {zone_id}")
+            for callback in self.callbacks['zone_change']:
+                callback(zone_id)
+            return
+
+        # Fallback: Try human-readable name (less reliable)
+        match = self.ZONE_NAME_PATTERN.search(line)
         if match:
             zone_name = match.group(1)
-            print(f"Zone detected: {zone_name}")
+            print(f"⚠ Zone name detected (fallback): {zone_name}")
             for callback in self.callbacks['zone_change']:
                 callback(zone_name)
+            return
+
+        # Debug: Show lines that look like zones but didn't match
+        if "Generating level" in line or "You have entered" in line:
+            print(f"[DEBUG] Line looks like zone but didn't match pattern:")
+            print(f"        Expected: 'Generating level X area \"ID\"' or ': You have entered <name>.'")
+            print(f"        Got: {line[:150]}")
 
     def start(self, poll_interval: float = 0.5):
         """
